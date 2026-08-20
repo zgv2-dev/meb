@@ -61,9 +61,9 @@ deno task dev
 1. Push your repository to GitHub or deploy via [Deno Deploy Dashboard](https://dash.deno.com/).
 2. Set the Environment Variables in Deno Deploy:
    - `BOT_TOKEN`: `your_telegram_bot_token`
-   - `WEBHOOK_URL` (optional): `https://<your-project>.deno.dev/webhook`
+   - `PUBLIC_DOMAIN`: `https://<your-project>.deno.dev` (or your custom domain)
    - `WEBHOOK_SECRET` (optional): a secure random string
-3. If `WEBHOOK_URL` is provided, the bot automatically registers the webhook on start. You can also trigger `/setup-webhook` or use the bot command `/setwebhook <url>`.
+3. On startup, the bot will host the server, automatically configure the Telegram webhook to `https://<your-project>.deno.dev/<BOT_TOKEN>`, and begin handling updates immediately. Root `GET /` returns `"hi!"`.
 
 ---
 

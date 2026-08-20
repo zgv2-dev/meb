@@ -6,58 +6,49 @@ import { audioQueue } from "./src/queue/queue.ts";
 const bot = createBot();
 
 // Determine execution mode
-const isWebhookMode = config.isDenoDeploy || !!config.webhookUrl;
+const isWebhookMode = config.isDenoDeploy || !!config.publicDomain || !!config.webhookUrl;
 
 if (isWebhookMode) {
-  console.log("Starting bot in Webhook mode (Deno Deploy / HTTP server)...");
+  console.log(`Starting HTTP server on port ${config.port}...`);
 
   const handleUpdate = webhookCallback(bot, "std/http", {
     secretToken: config.webhookSecret || undefined,
   });
 
-  // Track if webhook has been registered
-  let webhookRegistered = false;
+  const webhookUrl = config.webhookUrl;
 
-  const autoRegisterWebhook = async (originUrl?: string) => {
-    if (webhookRegistered) return;
+  // Set webhook automatically on startup if public domain / webhook URL is available
+  if (webhookUrl) {
     try {
-      const targetUrl = config.webhookUrl || (originUrl ? `${originUrl}/webhook` : "");
-      if (targetUrl) {
-        await bot.api.setWebhook(targetUrl, {
-          secret_token: config.webhookSecret || undefined,
-          allowed_updates: ["message", "callback_query", "my_chat_member"],
-        });
-        webhookRegistered = true;
-        console.log(`[Webhook] Webhook successfully registered to: ${targetUrl}`);
-      }
+      console.log(`Setting Telegram webhook to: ${webhookUrl}`);
+      await bot.api.setWebhook(webhookUrl, {
+        secret_token: config.webhookSecret || undefined,
+        allowed_updates: ["message", "callback_query", "my_chat_member"],
+      });
+      console.log("Webhook set successfully");
     } catch (err) {
-      console.warn("[Webhook] Auto-register webhook failed (will retry on incoming request):", err);
+      console.error("Failed to set webhook on startup:", err);
     }
-  };
-
-  // If explicit WEBHOOK_URL is provided in environment, register immediately on startup
-  if (config.webhookUrl) {
-    autoRegisterWebhook();
   }
 
   Deno.serve({ port: config.port }, async (req: Request) => {
     const url = new URL(req.url);
 
-    // Auto-register webhook from public server domain if not registered yet
-    if (!webhookRegistered && !config.webhookUrl) {
-      const detectedOrigin = url.origin;
-      if (!detectedOrigin.includes("localhost") && !detectedOrigin.includes("127.0.0.1")) {
-        await autoRegisterWebhook(detectedOrigin);
-      }
+    // GET / -> Root endpoint
+    if (req.method === "GET" && url.pathname === "/") {
+      return new Response("hi!", {
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+      });
     }
 
-    // Health check endpoint
-    if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/health")) {
+    // GET /health -> Health check & queue status
+    if (req.method === "GET" && url.pathname === "/health") {
       return new Response(
         JSON.stringify({
           status: "healthy",
           mode: "webhook",
-          webhookRegistered,
+          webhookUrl,
           queue: audioQueue.getStatus(),
         }),
         {
@@ -67,29 +58,14 @@ if (isWebhookMode) {
       );
     }
 
-    // Explicit webhook setup endpoint
-    if (req.method === "GET" && url.pathname === "/setup-webhook") {
-      const targetUrl = config.webhookUrl || `${url.origin}/webhook`;
-      try {
-        await bot.api.setWebhook(targetUrl, {
-          secret_token: config.webhookSecret || undefined,
-          allowed_updates: ["message", "callback_query", "my_chat_member"],
-        });
-        webhookRegistered = true;
-        return new Response(
-          JSON.stringify({ success: true, message: `Webhook set to ${targetUrl}` }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      } catch (err) {
-        return new Response(
-          JSON.stringify({ success: false, error: err instanceof Error ? err.message : String(err) }),
-          { status: 500, headers: { "Content-Type": "application/json" } },
-        );
-      }
-    }
+    // POST /<bot_token>, POST /webhook, or POST /
+    const isWebhookPath =
+      url.pathname === config.webhookPath ||
+      url.pathname === `/${config.botToken}` ||
+      url.pathname === "/webhook" ||
+      url.pathname === "/";
 
-    // Handle Telegram webhook updates
-    if (url.pathname === "/webhook" || url.pathname === "/") {
+    if (req.method === "POST" && isWebhookPath) {
       try {
         return await handleUpdate(req);
       } catch (err) {
