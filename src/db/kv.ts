@@ -1,106 +1,47 @@
-import { DatabaseSync } from "node:sqlite";
 import type { Channel, UserSettings } from "./types.ts";
 
-let dbInstance: DatabaseSync | null = null;
+let kvInstance: Deno.Kv | null = null;
 
-function getDb(): DatabaseSync {
-  if (!dbInstance) {
-    const dbPath = Deno.env.get("DB_PATH") || "bot.sqlite";
-    dbInstance = new DatabaseSync(dbPath);
-
-    // Initialize tables
-    dbInstance.exec(`
-      CREATE TABLE IF NOT EXISTS channels (
-        id INTEGER PRIMARY KEY,
-        owner_id INTEGER NOT NULL,
-        title TEXT NOT NULL,
-        username TEXT,
-        description TEXT NOT NULL,
-        last_post_id INTEGER NOT NULL DEFAULT 0,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_channels_owner ON channels(owner_id);
-
-      CREATE TABLE IF NOT EXISTS user_settings (
-        user_id INTEGER PRIMARY KEY,
-        active_channel_id INTEGER,
-        awaiting_description_channel_id INTEGER,
-        updated_at INTEGER NOT NULL
-      );
-    `);
+export async function getKv(): Promise<Deno.Kv> {
+  if (!kvInstance) {
+    kvInstance = await Deno.openKv();
   }
-  return dbInstance;
+  return kvInstance;
 }
 
 export async function saveChannel(channel: Channel): Promise<void> {
-  const db = getDb();
+  const kv = await getKv();
   channel.updatedAt = Date.now();
-
-  const stmt = db.prepare(`
-    INSERT INTO channels (id, owner_id, title, username, description, last_post_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      owner_id = excluded.owner_id,
-      title = excluded.title,
-      username = excluded.username,
-      description = excluded.description,
-      last_post_id = excluded.last_post_id,
-      updated_at = excluded.updated_at
-  `);
-
-  stmt.run(
-    channel.id,
-    channel.ownerId,
-    channel.title,
-    channel.username,
-    channel.description,
-    channel.lastPostId,
-    channel.createdAt,
-    channel.updatedAt,
-  );
+  await kv.atomic()
+    .set(["channels", channel.id], channel)
+    .set(["user_channels", channel.ownerId, channel.id], channel)
+    .commit();
 }
 
 export async function getChannel(channelId: number): Promise<Channel | null> {
-  const db = getDb();
-  const stmt = db.prepare("SELECT * FROM channels WHERE id = ?");
-  const row = stmt.get(channelId) as Record<string, unknown> | undefined;
-  if (!row) return null;
-
-  return {
-    id: Number(row.id),
-    ownerId: Number(row.owner_id),
-    title: String(row.title),
-    username: row.username ? String(row.username) : null,
-    description: String(row.description),
-    lastPostId: Number(row.last_post_id),
-    createdAt: Number(row.created_at),
-    updatedAt: Number(row.updated_at),
-  };
+  const kv = await getKv();
+  const res = await kv.get<Channel>(["channels", channelId]);
+  return res.value;
 }
 
 export async function getUserChannels(userId: number): Promise<Channel[]> {
-  const db = getDb();
-  const stmt = db.prepare("SELECT * FROM channels WHERE owner_id = ? ORDER BY created_at DESC");
-  const rows = stmt.all(userId) as Record<string, unknown>[];
-
-  return rows.map((row) => ({
-    id: Number(row.id),
-    ownerId: Number(row.owner_id),
-    title: String(row.title),
-    username: row.username ? String(row.username) : null,
-    description: String(row.description),
-    lastPostId: Number(row.last_post_id),
-    createdAt: Number(row.created_at),
-    updatedAt: Number(row.updated_at),
-  }));
+  const kv = await getKv();
+  const channels: Channel[] = [];
+  const entries = kv.list<Channel>({ prefix: ["user_channels", userId] });
+  for await (const entry of entries) {
+    if (entry.value) {
+      channels.push(entry.value);
+    }
+  }
+  return channels;
 }
 
 export async function deleteChannel(userId: number, channelId: number): Promise<void> {
-  const db = getDb();
-  const stmt = db.prepare("DELETE FROM channels WHERE id = ? AND owner_id = ?");
-  stmt.run(channelId, userId);
+  const kv = await getKv();
+  await kv.atomic()
+    .delete(["channels", channelId])
+    .delete(["user_channels", userId, channelId])
+    .commit();
 
   // If active channel was this channel, reset it
   const settings = await getUserSettings(userId);
@@ -110,59 +51,49 @@ export async function deleteChannel(userId: number, channelId: number): Promise<
 }
 
 export async function updateChannelDescription(channelId: number, description: string): Promise<Channel | null> {
-  const db = getDb();
-  const now = Date.now();
-  const stmt = db.prepare("UPDATE channels SET description = ?, updated_at = ? WHERE id = ?");
-  stmt.run(description, now, channelId);
-  return await getChannel(channelId);
+  const channel = await getChannel(channelId);
+  if (!channel) return null;
+  channel.description = description;
+  await saveChannel(channel);
+  return channel;
 }
 
 export async function updateChannelLastPostId(channelId: number, lastPostId: number): Promise<Channel | null> {
-  const db = getDb();
-  const now = Date.now();
-  const stmt = db.prepare("UPDATE channels SET last_post_id = ?, updated_at = ? WHERE id = ?");
-  stmt.run(lastPostId, now, channelId);
-  return await getChannel(channelId);
+  const channel = await getChannel(channelId);
+  if (!channel) return null;
+  channel.lastPostId = lastPostId;
+  await saveChannel(channel);
+  return channel;
 }
 
 export async function getUserSettings(userId: number): Promise<UserSettings | null> {
-  const db = getDb();
-  const stmt = db.prepare("SELECT * FROM user_settings WHERE user_id = ?");
-  const row = stmt.get(userId) as Record<string, unknown> | undefined;
-  if (!row) return null;
-
-  return {
-    userId: Number(row.user_id),
-    activeChannelId: row.active_channel_id ? Number(row.active_channel_id) : null,
-    awaitingDescriptionChannelId: row.awaiting_description_channel_id ? Number(row.awaiting_description_channel_id) : null,
-    updatedAt: Number(row.updated_at),
-  };
+  const kv = await getKv();
+  const res = await kv.get<UserSettings>(["user_settings", userId]);
+  return res.value;
 }
 
 export async function setActiveChannel(userId: number, channelId: number | null): Promise<void> {
-  const db = getDb();
-  const now = Date.now();
-  const stmt = db.prepare(`
-    INSERT INTO user_settings (user_id, active_channel_id, updated_at)
-    VALUES (?, ?, ?)
-    ON CONFLICT(user_id) DO UPDATE SET
-      active_channel_id = excluded.active_channel_id,
-      updated_at = excluded.updated_at
-  `);
-  stmt.run(userId, channelId, now);
+  const kv = await getKv();
+  const existing = await getUserSettings(userId);
+  const settings: UserSettings = {
+    userId,
+    activeChannelId: channelId,
+    awaitingDescriptionChannelId: existing?.awaitingDescriptionChannelId ?? null,
+    updatedAt: Date.now(),
+  };
+  await kv.set(["user_settings", userId], settings);
 }
 
 export async function setAwaitingDescription(userId: number, channelId: number | null): Promise<void> {
-  const db = getDb();
-  const now = Date.now();
-  const stmt = db.prepare(`
-    INSERT INTO user_settings (user_id, awaiting_description_channel_id, updated_at)
-    VALUES (?, ?, ?)
-    ON CONFLICT(user_id) DO UPDATE SET
-      awaiting_description_channel_id = excluded.awaiting_description_channel_id,
-      updated_at = excluded.updated_at
-  `);
-  stmt.run(userId, channelId, now);
+  const kv = await getKv();
+  const existing = await getUserSettings(userId);
+  const settings: UserSettings = {
+    userId,
+    activeChannelId: existing?.activeChannelId ?? null,
+    awaitingDescriptionChannelId: channelId,
+    updatedAt: Date.now(),
+  };
+  await kv.set(["user_settings", userId], settings);
 }
 
 export async function getActiveChannelForUser(userId: number): Promise<Channel | null> {
