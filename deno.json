@@ -1,0 +1,14 @@
+{
+  "version": "1.0.0",
+  "tasks": {
+    "dev": "deno run --env --allow-net --allow-env --allow-read --allow-write --unstable-kv --watch main.ts",
+    "start": "deno run --env --allow-net --allow-env --allow-read --allow-write --unstable-kv main.ts",
+    "check": "deno check main.ts",
+    "test": "deno test --allow-env --allow-net --allow-read --allow-write --unstable-kv tests/"
+  },
+  "imports": {
+    "grammy": "npm:grammy@^1.35.0",
+    "@grammyjs/types": "npm:@grammyjs/types@^3.19.0",
+    "@std/assert": "jsr:@std/assert@^1.0.11"
+  }
+}
