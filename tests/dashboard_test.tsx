@@ -3,7 +3,8 @@ import { App } from "fresh";
 import { type Api, GrammyError } from "grammy";
 import { getTrack, saveTrack } from "../src/db/kv.ts";
 import type { Track } from "../src/db/types.ts";
-import { SESSION_COOKIE, signToken, verifyToken } from "../src/dashboard/auth.ts";
+import { SESSION_COOKIE, signToken, verifyInitData, verifyToken } from "../src/dashboard/auth.ts";
+import { config } from "../src/config.ts";
 import { findDuplicateGroups } from "../src/utils/duplicates.ts";
 import type { State } from "../utils.ts";
 import authMiddleware from "../routes/dashboard/_middleware.ts";
@@ -37,6 +38,33 @@ Deno.test("dashboard tokens verify, and reject tampering and expiry", async () =
   assertEquals(await verifyToken(token.replace(String(userId), "1")), null);
   assertEquals(await verifyToken(await signToken(userId, -1)), null);
   assertEquals(await verifyToken("garbage"), null);
+});
+
+// Signs initData the way Telegram does for this bot (core.telegram.org/bots/webapps)
+async function telegramInitData(fields: Record<string, string>): Promise<string> {
+  const hmac = async (key: BufferSource, data: string) =>
+    new Uint8Array(
+      await crypto.subtle.sign(
+        "HMAC",
+        await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]),
+        new TextEncoder().encode(data),
+      ),
+    );
+  const secret = await hmac(new TextEncoder().encode("WebAppData"), config.botToken);
+  const check = Object.keys(fields).sort().map((k) => `${k}=${fields[k]}`).join("\n");
+  const hash = Array.from(await hmac(secret, check), (b) => b.toString(16).padStart(2, "0")).join("");
+  return new URLSearchParams({ ...fields, hash }).toString();
+}
+
+Deno.test("verifyInitData accepts Telegram-signed data, rejects tampered or stale data", async () => {
+  const now = String(Math.floor(Date.now() / 1000));
+  const user = JSON.stringify({ id: userId, first_name: "A & B" });
+  const valid = await telegramInitData({ auth_date: now, query_id: "q1", user });
+  assertEquals(await verifyInitData(valid), userId);
+  assertEquals(await verifyInitData(valid.replace("q1", "q2")), null);
+  assertEquals(await verifyInitData(await telegramInitData({ auth_date: "1000", user })), null);
+  assertEquals(await verifyInitData(await telegramInitData({ auth_date: now, user: "not json" })), null);
+  assertEquals(await verifyInitData(""), null);
 });
 
 Deno.test("findDuplicateGroups matches artist+title per channel, or the same file", () => {
@@ -80,12 +108,23 @@ Deno.test("dashboard routes require login, edit, and delete only on request", as
     })
     .use(authMiddleware)
     .get("/dashboard/login", loginHandler.GET!)
+    .post("/dashboard/login", loginHandler.POST!)
     .patch("/dashboard/api/tracks/:id", trackHandler.PATCH!)
     .delete("/dashboard/api/tracks/:id", trackHandler.DELETE!)
     .handler();
   const base = "http://localhost/dashboard";
 
   assertEquals((await handle(new Request(`${base}/api/tracks/dash1`, { method: "DELETE" }))).status, 401);
+
+  // Mini App login: Telegram initData in, session cookie out
+  const initData = await telegramInitData({
+    auth_date: String(Math.floor(Date.now() / 1000)),
+    user: JSON.stringify({ id: userId }),
+  });
+  const appLogin = await handle(new Request(`${base}/login`, { method: "POST", body: initData }));
+  assertEquals(appLogin.status, 204);
+  assert(appLogin.headers.get("Set-Cookie")!.startsWith(`${SESSION_COOKIE}=${userId}.`));
+  assertEquals((await handle(new Request(`${base}/login`, { method: "POST", body: "user=x" }))).status, 401);
 
   const login = await handle(new Request(`${base}/login?t=${await signToken(userId, 60_000)}`));
   assertEquals(login.status, 303);

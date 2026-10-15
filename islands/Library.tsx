@@ -5,8 +5,10 @@ import { findDuplicateGroups } from "../src/utils/duplicates.ts";
 import {
   albumOf,
   artistOf,
+  artistsOf,
   type DateRange,
   defaultDescending,
+  primaryArtistOf,
   type Filters,
   filterTracks,
   NO_FILTERS,
@@ -36,13 +38,25 @@ const DATE_RANGES: [DateRange, string][] = [
   ["custom", "Custom range"],
 ];
 const unique = <T,>(values: T[]) => [...new Set(values)];
+// Inside the Mini App, t.me links open in Telegram itself (Bot API 7.0+ keeps the Mini App open)
+function openPost(e: MouseEvent) {
+  const app = (globalThis as { Telegram?: { WebApp?: { initData: string; openTelegramLink(url: string): void } } })
+    .Telegram?.WebApp;
+  if (!app?.initData) return;
+  e.preventDefault();
+  app.openTelegramLink((e.currentTarget as HTMLAnchorElement).href);
+}
+const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 const titleOf = (t: Track) => t.title || (t.isVoice ? "Voice message" : "Untitled");
 const fmtTime = (s?: number) => s ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : "";
 const hasCover = (t: Track) => !!(t.coverUrl || t.thumbFileId);
 
-function groupBy(tracks: Track[], keyFn: (t: Track) => string): [string, Track[]][] {
+// A track with several keys (one per credited artist) lands in each of those groups
+function groupBy(tracks: Track[], keyFn: (t: Track) => string | string[]): [string, Track[]][] {
   const map = new Map<string, Track[]>();
-  for (const t of tracks) map.set(keyFn(t), [...(map.get(keyFn(t)) ?? []), t]);
+  for (const t of tracks) {
+    for (const key of [keyFn(t)].flat()) map.set(key, [...(map.get(key) ?? []), t]);
+  }
   return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 }
 
@@ -85,8 +99,8 @@ export default function Library(props: { tracks: Track[] }) {
   const filtersActive = JSON.stringify(filters) !== JSON.stringify(NO_FILTERS);
 
   // Filter options: albums narrow to the chosen artist
-  const artists = unique(tracks.map(artistOf)).sort((a, b) => a.localeCompare(b));
-  const albums = unique(tracks.filter((t) => !filters.artist || artistOf(t) === filters.artist).map(albumOf))
+  const artists = unique(tracks.flatMap(artistsOf)).sort((a, b) => a.localeCompare(b));
+  const albums = unique(tracks.filter((t) => !filters.artist || artistsOf(t).includes(filters.artist)).map(albumOf))
     .sort((a, b) => a.localeCompare(b));
   const years = unique(tracks.flatMap((t) => t.year ? [t.year] : [])).sort((a, b) => b - a);
 
@@ -129,7 +143,7 @@ export default function Library(props: { tracks: Track[] }) {
         </div>
       </div>
       <div class="actions">
-        <a href={t.postUrl} target="_blank" rel="noopener">Open post</a>
+        <a href={t.postUrl} target="_blank" rel="noopener" onClick={openPost}>Open post</a>
         <button type="button" class="btn" onClick={() => setEditing(t)}>Edit</button>
         <button type="button" class="btn danger" onClick={() => setDeleting(t)}>Delete</button>
       </div>
@@ -149,7 +163,7 @@ export default function Library(props: { tracks: Track[] }) {
       );
     }
     if (tab === "artists") {
-      const artists = groupBy(visible, artistOf);
+      const artists = groupBy(visible, artistsOf);
       if (!artists.length) return <p class="empty">No artists.</p>;
       return (
         <div class="grid">
@@ -162,14 +176,14 @@ export default function Library(props: { tracks: Track[] }) {
             >
               <Cover track={ts.find(hasCover)} label={name} />
               <div>{name}</div>
-              <div class="sub">{ts.length} songs · {new Set(ts.map(albumOf)).size} albums</div>
+              <div class="sub">{count(ts.length, "song")} · {count(new Set(ts.map(albumOf)).size, "album")}</div>
             </button>
           ))}
         </div>
       );
     }
     if (tab === "albums") {
-      const albums = groupBy(visible, (t) => `${albumOf(t)}\u0000${artistOf(t)}`);
+      const albums = groupBy(visible, (t) => `${albumOf(t)}\u0000${primaryArtistOf(t)}`);
       if (!albums.length) return <p class="empty">No albums.</p>;
       return (
         <div class="grid">
@@ -181,11 +195,11 @@ export default function Library(props: { tracks: Track[] }) {
                 type="button"
                 class="card"
                 key={key}
-                onClick={() => showSongs({ artist: artistOf(t), album: albumOf(t) })}
+                onClick={() => showSongs({ artist: primaryArtistOf(t), album: albumOf(t) })}
               >
                 <Cover track={t} label={albumOf(t)} />
                 <div>{albumOf(t)}</div>
-                <div class="sub">{[artistOf(t), year, `${ts.length} songs`].filter(Boolean).join(" · ")}</div>
+                <div class="sub">{[primaryArtistOf(t), year, count(ts.length, "song")].filter(Boolean).join(" · ")}</div>
               </button>
             );
           })}

@@ -18,7 +18,35 @@ export interface Filters {
 export const NO_FILTERS: Filters = { title: "", artist: "", album: "", year: "", date: "", from: "", to: "" };
 
 export const artistOf = (t: Track) => t.artist || "Unknown artist";
-export const albumOf = (t: Track) => t.album || "Unknown album";
+
+// Joiners between credited artists in Telegram's performer field: "A & B", "A, B", "A feat. B", "A x B".
+// shortcut: names that contain a joiner ("Tyler, The Creator", "Simon & Garfunkel") get split too; add an
+// exceptions list if that shows up in real libraries.
+const ARTIST_JOINER = /\s*[,;]\s+|\s+(?:&|\/|x|[Ff]eat\.?|[Ff]t\.?|[Ff]eaturing|[Vv]s\.?)\s+/;
+
+/** Every credited artist on a track, in credit order. */
+export const artistsOf = (t: Track): string[] => {
+  const names = [...new Set(t.artist.split(ARTIST_JOINER).map((a) => a.trim()).filter(Boolean))];
+  return names.length ? names : ["Unknown artist"];
+};
+
+/** First-credited artist: the album artist, so collaborations stay on one album. */
+export const primaryArtistOf = (t: Track) => artistsOf(t)[0];
+
+// Trailing edition markers: "(Deluxe)", "[Bonus Tracks]", "(2011 Remaster)", " - Deluxe Edition".
+// Not "version": "Fearless (Taylor's Version)" is a different recording, not an edition.
+const EDITION = String.raw`[^()[\]]*\b(?:deluxe|bonus|expanded|edition|remaster(?:ed)?|anniversary)\b[^()[\]]*`;
+const EDITION_SUFFIX = new RegExp(String.raw`\s*(?:\(${EDITION}\)|\[${EDITION}\]|\s[-–—]\s${EDITION})\s*$`, "i");
+
+/** Album name with edition markers removed, so "X" and "X (Deluxe)" count as one album. */
+export const albumOf = (t: Track) => {
+  let name = t.album.trim();
+  // Loop: "X (Deluxe) [Remastered]" carries two markers
+  for (let base = name.replace(EDITION_SUFFIX, ""); base && base !== name; base = name.replace(EDITION_SUFFIX, "")) {
+    name = base;
+  }
+  return name || "Unknown album";
+};
 
 /** Newest first for dates and years, A–Z for text. */
 export const defaultDescending = (key: SortKey) => key === "forwarded" || key === "year";
@@ -52,7 +80,7 @@ export function filterTracks(tracks: Track[], f: Filters, now = new Date()): Tra
   const [start, end] = dateBounds(f, now);
   return tracks.filter((t) =>
     (!title || t.title.toLowerCase().includes(title)) &&
-    (!f.artist || artistOf(t) === f.artist) &&
+    (!f.artist || artistsOf(t).includes(f.artist)) &&
     (!f.album || albumOf(t) === f.album) &&
     (!f.year || String(t.year ?? "") === f.year) &&
     t.createdAt >= start && t.createdAt < end

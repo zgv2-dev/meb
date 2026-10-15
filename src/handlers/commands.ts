@@ -1,4 +1,5 @@
-import type { Bot } from "grammy";
+import { type Bot, InlineKeyboard } from "grammy";
+import { config } from "../config.ts";
 import {
   getUserChannels,
   getActiveChannelForUser,
@@ -216,7 +217,13 @@ export function registerCommandHandlers(bot: Bot) {
   // /dashboard
   bot.command("dashboard", async (ctx) => {
     if (!ctx.from) return;
-    // Plain text, not a button: Telegram rejects localhost URLs in inline keyboards
+    // Mini App inside Telegram; it needs an HTTPS URL, so local dev (no PUBLIC_DOMAIN) gets a browser link
+    if (config.publicDomain.startsWith("https://")) {
+      await ctx.reply("🎵 Your music library", {
+        reply_markup: new InlineKeyboard().webApp("Open library", `${config.publicDomain}/dashboard/app`),
+      });
+      return;
+    }
     await ctx.reply(
       `🎵 Your music library (link valid for 10 minutes):\n${await createLoginUrl(ctx.from.id)}`,
       { link_preview_options: { is_disabled: true } },

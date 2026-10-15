@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import type { Track } from "../src/db/types.ts";
-import { dateBounds, filterTracks, NO_FILTERS, sortTracks } from "../src/utils/library.ts";
+import { albumOf, artistsOf, dateBounds, filterTracks, NO_FILTERS, sortTracks } from "../src/utils/library.ts";
 
 const t = (id: string, over: Partial<Track>): Track => ({
   id,
@@ -58,4 +58,45 @@ Deno.test("filterTracks combines title, artist, album, year and date", () => {
   assertEquals(run({ album: "OK Computer", year: "1997" }), ["a", "b"]);
   assertEquals(run({ date: "yesterday" }), ["b"]);
   assertEquals(run({ date: "custom", from: "2026-10-01", to: "2026-10-01" }), ["c"]);
+});
+
+Deno.test("artistsOf splits credited artists, keeping names with no joiner whole", () => {
+  const of = (artist: string) => artistsOf(t("x", { artist }));
+  assertEquals(of("Metro Boomin & Travis Scott & Kodak Black & 21 Savage"), [
+    "Metro Boomin",
+    "Travis Scott",
+    "Kodak Black",
+    "21 Savage",
+  ]);
+  assertEquals(of("Metro Boomin, Gunna feat. Young Thug"), ["Metro Boomin", "Gunna", "Young Thug"]);
+  assertEquals(of("Skrillex x Fred again.. ft. Flowdan"), ["Skrillex", "Fred again..", "Flowdan"]);
+  assertEquals(of("AC/DC"), ["AC/DC"]);
+  assertEquals(of("Malcolm X"), ["Malcolm X"]);
+  assertEquals(of("Gunna & Gunna"), ["Gunna"]);
+  assertEquals(of(""), ["Unknown artist"]);
+});
+
+Deno.test("artist filter matches any credited artist", () => {
+  const tracks = [
+    t("a", { artist: "Metro Boomin & Gunna" }),
+    t("b", { artist: "Gunna" }),
+    t("c", { artist: "Metro Boomin & 21 Savage" }),
+  ];
+  assertEquals(ids(filterTracks(tracks, { ...NO_FILTERS, artist: "Gunna" }, now)), ["a", "b"]);
+});
+
+Deno.test("albumOf merges deluxe/bonus/remaster editions into the base album", () => {
+  const of = (album: string) => albumOf(t("x", { album }));
+  assertEquals(of("NOT ALL HEROES WEAR CAPES (Deluxe)"), "NOT ALL HEROES WEAR CAPES");
+  assertEquals(of("Views [Deluxe Edition]"), "Views");
+  assertEquals(of("Rumours (2011 Remaster)"), "Rumours");
+  assertEquals(of("Rumours - Super Deluxe Edition"), "Rumours");
+  assertEquals(of("Thriller (Deluxe) [Remastered]"), "Thriller");
+  assertEquals(of("21 (Bonus Track Version)"), "21");
+  // Not editions: kept as is
+  assertEquals(of("(What's the Story) Morning Glory?"), "(What's the Story) Morning Glory?");
+  assertEquals(of("Fearless (Taylor's Version)"), "Fearless (Taylor's Version)");
+  assertEquals(of("Blonde (Live)"), "Blonde (Live)");
+  assertEquals(of("(Deluxe)"), "(Deluxe)");
+  assertEquals(of(""), "Unknown album");
 });

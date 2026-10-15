@@ -1,11 +1,18 @@
+/* Inside Telegram the --tg-theme-* variables (set by telegram-web-app.js) win; elsewhere the fallbacks apply */
 :root {
-  --bg: #f6f6f4; --panel: #fff; --text: #1d1d1b; --muted: #6b6b66; --line: #e3e3de;
-  --accent: #2b6cb0; --danger: #c53030; --warn-bg: #fff6e0;
+  --bg: var(--tg-theme-bg-color, #f6f6f4); --panel: var(--tg-theme-secondary-bg-color, #fff);
+  --text: var(--tg-theme-text-color, #1d1d1b); --muted: var(--tg-theme-hint-color, #6b6b66);
+  --line: var(--tg-theme-section-separator-color, #e3e3de); --accent: var(--tg-theme-link-color, #2b6cb0);
+  --danger: var(--tg-theme-destructive-text-color, #c53030);
 }
+/* Tinted from the theme's own colors, so it stays readable under any Telegram theme */
+:root { --warn-bg: color-mix(in srgb, var(--danger) 18%, var(--panel)); }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #141413; --panel: #1e1e1c; --text: #ececea; --muted: #9a9a94; --line: #33332f;
-    --accent: #63a4ff; --danger: #ff6b6b; --warn-bg: #3a3220;
+    --bg: var(--tg-theme-bg-color, #141413); --panel: var(--tg-theme-secondary-bg-color, #1e1e1c);
+    --text: var(--tg-theme-text-color, #ececea); --muted: var(--tg-theme-hint-color, #9a9a94);
+    --line: var(--tg-theme-section-separator-color, #33332f); --accent: var(--tg-theme-link-color, #63a4ff);
+    --danger: var(--tg-theme-destructive-text-color, #ff6b6b);
   }
 }
 * { box-sizing: border-box; }
@@ -16,7 +23,7 @@ nav { display: flex; gap: 4px; }
 nav button { border: 0; background: none; color: var(--muted); padding: 6px 10px; border-radius: 6px; font: inherit; cursor: pointer; }
 nav button[aria-current] { background: var(--panel); color: var(--text); box-shadow: 0 0 0 1px var(--line); }
 .badge { background: var(--danger); color: #fff; border-radius: 9px; padding: 0 6px; font-size: 12px; margin-left: 4px; }
-input[type=search] { padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); font: inherit; min-width: 0; flex: 1 1 180px; max-width: 280px; }
+header input[type=search] { padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); font: inherit; min-width: 0; flex: 1 1 180px; max-width: 280px; }
 main { padding: 16px; max-width: 1100px; margin: 0 auto; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; margin-bottom: 16px; }
 .toolbar label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
@@ -31,7 +38,7 @@ main { padding: 16px; max-width: 1100px; margin: 0 auto; }
 .row .actions a { color: var(--accent); }
 .cover { width: 44px; height: 44px; border-radius: 4px; object-fit: cover; background: var(--line); display: grid; place-items: center; color: var(--muted); font-weight: 600; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
-.card { background: none; border: 0; padding: 0; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+.card { background: none; border: 0; padding: 0; text-align: left; color: inherit; font: inherit; cursor: pointer; align-self: start; display: flex; flex-direction: column; }
 .card .cover { width: 100%; height: auto; aspect-ratio: 1; font-size: 32px; }
 .card.round .cover { border-radius: 50%; }
 .card .sub { color: var(--muted); font-size: 13px; }

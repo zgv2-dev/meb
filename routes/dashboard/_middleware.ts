@@ -1,9 +1,9 @@
 import { define } from "../../utils.ts";
 import { SESSION_COOKIE, verifyToken } from "../../src/dashboard/auth.ts";
 
-// Every /dashboard route except the login link needs a valid session cookie
+// Every /dashboard route except login and the Mini App entry needs a valid session cookie
 export default define.middleware(async (ctx) => {
-  if (ctx.url.pathname === "/dashboard/login") return ctx.next();
+  if (ctx.url.pathname === "/dashboard/login" || ctx.url.pathname === "/dashboard/app") return ctx.next();
   const cookie = ctx.req.headers.get("Cookie")?.split(/;\s*/).find((c) => c.startsWith(`${SESSION_COOKIE}=`));
   const userId = await verifyToken(cookie?.slice(SESSION_COOKIE.length + 1) ?? "");
   if (!userId) {
