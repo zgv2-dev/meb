@@ -63,7 +63,7 @@ deno task dev
    - `BOT_TOKEN`: `your_telegram_bot_token`
    - `PUBLIC_DOMAIN`: `https://<your-project>.deno.dev` (or your custom domain)
    - `WEBHOOK_SECRET` (optional): a secure random string
-3. On startup, the bot will host the server, automatically configure the Telegram webhook to `https://<your-project>.deno.dev/<BOT_TOKEN>`, and begin handling updates immediately. Root `GET /` returns `"hi!"`.
+3. On startup, the bot will host the server, automatically configure the Telegram webhook to `https://<your-project>.deno.dev/webhook`, and begin handling updates immediately. Root `GET /` returns `"hi!"`.
 
 ---
 

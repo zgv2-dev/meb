@@ -1,7 +1,16 @@
 import { webhookCallback } from "grammy";
 import { createBot } from "./src/bot.ts";
 import { config } from "./src/config.ts";
-import { audioQueue } from "./src/queue/queue.ts";
+
+// Never log the bot token: fetch errors embed it in the Telegram API URL
+for (const level of ["log", "info", "warn", "error", "debug"] as const) {
+  const write = console[level];
+  console[level] = (...args: unknown[]) =>
+    write(
+      args.map((a) => (typeof a === "string" ? a : Deno.inspect(a))).join(" ")
+        .replaceAll(config.botToken || "\0", "<BOT_TOKEN>"),
+    );
+}
 
 const bot = createBot();
 
@@ -13,6 +22,10 @@ if (isWebhookMode) {
 
   const handleUpdate = webhookCallback(bot, "std/http", {
     secretToken: config.webhookSecret || undefined,
+    // Audio updates publish inline (see src/queue/queue.ts); never let grammY cut them short.
+    // "return" acks the update instead of failing it, so Telegram does not redeliver and double-post.
+    timeoutMilliseconds: config.updateBudgetMs + 10_000,
+    onTimeout: "return",
   });
 
   const webhookUrl = config.webhookUrl;
@@ -23,6 +36,8 @@ if (isWebhookMode) {
       console.log(`Setting Telegram webhook to: ${webhookUrl}`);
       await bot.api.setWebhook(webhookUrl, {
         secret_token: config.webhookSecret || undefined,
+        // One update at a time: Telegram holds the backlog while each audio publishes inline
+        max_connections: 1,
         allowed_updates: ["message", "callback_query", "my_chat_member"],
       });
       console.log("Webhook set successfully");
@@ -48,8 +63,7 @@ if (isWebhookMode) {
         JSON.stringify({
           status: "healthy",
           mode: "webhook",
-          webhookUrl,
-          queue: audioQueue.getStatus(),
+          webhookUrl: webhookUrl.replace(config.botToken, "<BOT_TOKEN>"),
         }),
         {
           status: 200,
@@ -58,11 +72,9 @@ if (isWebhookMode) {
       );
     }
 
-    // POST /<bot_token>, POST /webhook, or POST /
+    // POST /webhook or POST /
     const isWebhookPath =
       url.pathname === config.webhookPath ||
-      url.pathname === `/${config.botToken}` ||
-      url.pathname === "/webhook" ||
       url.pathname === "/";
 
     if (req.method === "POST" && isWebhookPath) {

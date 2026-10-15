@@ -6,7 +6,7 @@ import {
   getChannel,
   getActiveChannelForUser,
 } from "../db/kv.ts";
-import { audioQueue } from "../queue/queue.ts";
+import { publishAudioItem } from "../queue/queue.ts";
 import type { AudioQueueItem } from "../db/types.ts";
 import { escapeMarkdownV2 } from "../utils/markdown.ts";
 import { tryHandleForwardedChannelRegistration } from "./channel.ts";
@@ -111,9 +111,12 @@ export function registerAudioHandlers(bot: Bot) {
       queuedAt: Date.now(),
     };
 
-    const queuePos = audioQueue.enqueue(item);
-    console.log(
-      `[Audio] Queued audio from user ${userId} to channel ${activeChannel.title} (queue pos: ${queuePos})`,
-    );
+    console.log(`[Audio] Publishing audio from user ${userId} to channel ${activeChannel.title}`);
+    const published = await publishAudioItem(ctx.api, item);
+    if (!published) {
+      await ctx.reply("⚠️ Could not post this track. Forward it again later.", {
+        reply_parameters: { message_id: msg.message_id, allow_sending_without_reply: true },
+      });
+    }
   });
 }

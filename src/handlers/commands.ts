@@ -11,7 +11,6 @@ import {
 } from "../db/kv.ts";
 import { buildChannelsMenu } from "./menus.ts";
 import { escapeMarkdownV2 } from "../utils/markdown.ts";
-import { audioQueue } from "../queue/queue.ts";
 import { config } from "../config.ts";
 
 export function registerCommandHandlers(bot: Bot) {
@@ -205,17 +204,10 @@ export function registerCommandHandlers(bot: Bot) {
 
   // /queue
   bot.command("queue", async (ctx) => {
-    const status = audioQueue.getStatus();
-    let text = `📊 *Audio Queue Status*\n\n` +
-      `• *Pending Items:* \`${status.pendingCount}\`\n` +
-      `• *Is Processing:* \`${status.isProcessing ? "Yes ⏳" : "Idle 💤"}\`\n`;
-
-    if (status.channelQueues.size > 0) {
-      text += `\n*Channels in queue:*\n`;
-      for (const [chId, count] of status.channelQueues.entries()) {
-        text += `• Channel \`${chId}\`: ${count} items\n`;
-      }
-    }
+    // Telegram holds the backlog (max_connections=1); pending updates are the queue
+    const info = await ctx.api.getWebhookInfo();
+    const text = `📊 *Audio Queue Status*\n\n` +
+      `• *Pending Updates:* \`${info.pending_update_count}\`\n`;
 
     await ctx.reply(text, { parse_mode: "MarkdownV2" });
   });
@@ -238,6 +230,7 @@ export function registerCommandHandlers(bot: Bot) {
     try {
       await ctx.api.setWebhook(customUrl, {
         secret_token: config.webhookSecret || undefined,
+        max_connections: 1,
         allowed_updates: ["message", "callback_query", "my_chat_member"],
       });
       await ctx.reply(`✅ Webhook set successfully to: \`${customUrl}\``, { parse_mode: "MarkdownV2" });
