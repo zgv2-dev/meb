@@ -11,7 +11,6 @@ import {
 } from "../db/kv.ts";
 import { buildChannelsMenu } from "./menus.ts";
 import { escapeMarkdownV2 } from "../utils/markdown.ts";
-import { config } from "../config.ts";
 
 export function registerCommandHandlers(bot: Bot) {
   // /start
@@ -217,25 +216,5 @@ export function registerCommandHandlers(bot: Bot) {
     if (!ctx.from) return;
     await setAwaitingDescription(ctx.from.id, null);
     await ctx.reply("Action cancelled.");
-  });
-
-  // /setwebhook
-  bot.command("setwebhook", async (ctx) => {
-    const customUrl = ctx.match?.trim() || config.webhookUrl;
-    if (!customUrl) {
-      await ctx.reply("⚠️ No webhook URL provided or configured in WEBHOOK_URL.");
-      return;
-    }
-
-    try {
-      await ctx.api.setWebhook(customUrl, {
-        secret_token: config.webhookSecret || undefined,
-        max_connections: 1,
-        allowed_updates: ["message", "callback_query", "my_chat_member"],
-      });
-      await ctx.reply(`✅ Webhook set successfully to: \`${customUrl}\``, { parse_mode: "MarkdownV2" });
-    } catch (err) {
-      await ctx.reply(`⚠️ Failed to set webhook: ${err instanceof Error ? err.message : String(err)}`);
-    }
   });
 }

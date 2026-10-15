@@ -27,7 +27,7 @@ A Telegram bot built with **Deno 2** and **grammY** framework. It strips existin
 - **Deployment Ready**:
   - Runs with **Long Polling** for local development.
   - Runs with **Webhooks** natively on **Deno Deploy** with built-in **Deno KV** persistence.
-  - Automatic webhook registration endpoint (`/setup-webhook`) and startup auto-detection.
+  - Automatic webhook registration on startup.
 
 ---
 
@@ -80,7 +80,6 @@ deno task dev
 | `/addchannel <@user or id>` | Manually add a channel |
 | `/queue` | View status of the audio processing queue |
 | `/cancel` | Cancel awaiting input state |
-| `/setwebhook [url]` | Set or update Telegram webhook |
 
 ---
 
