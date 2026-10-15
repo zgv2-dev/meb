@@ -73,6 +73,8 @@ export function registerAudioHandlers(bot: Bot) {
     }
 
     let fileId = "";
+    let fileUniqueId: string | undefined;
+    let thumbFileId: string | undefined;
     let title: string | undefined;
     let performer: string | undefined;
     let duration: number | undefined;
@@ -80,15 +82,20 @@ export function registerAudioHandlers(bot: Bot) {
 
     if (msg.audio) {
       fileId = msg.audio.file_id;
+      fileUniqueId = msg.audio.file_unique_id;
+      thumbFileId = msg.audio.thumbnail?.file_id;
       title = msg.audio.title;
       performer = msg.audio.performer;
       duration = msg.audio.duration;
     } else if (msg.voice) {
       fileId = msg.voice.file_id;
+      fileUniqueId = msg.voice.file_unique_id;
       duration = msg.voice.duration;
       isVoice = true;
     } else if (msg.document && msg.document.mime_type?.startsWith("audio/")) {
       fileId = msg.document.file_id;
+      fileUniqueId = msg.document.file_unique_id;
+      thumbFileId = msg.document.thumbnail?.file_id;
       title = msg.document.file_name;
     }
 
@@ -102,6 +109,8 @@ export function registerAudioHandlers(bot: Bot) {
       userId,
       channelId: activeChannel.id,
       fileId,
+      fileUniqueId,
+      thumbFileId,
       title,
       performer,
       duration,

@@ -1,7 +1,9 @@
-import { webhookCallback } from "grammy";
+import { App, staticFiles } from "fresh";
+import { type Bot, webhookCallback } from "grammy";
 import { createBot } from "./src/bot.ts";
 import { config } from "./src/config.ts";
 import { redactBotTokenInLogs } from "./src/utils/logging.ts";
+import type { State } from "./utils.ts";
 
 redactBotTokenInLogs();
 
@@ -10,9 +12,32 @@ const bot = createBot();
 // Determine execution mode
 const isWebhookMode = config.isDenoDeploy || !!config.publicDomain || !!config.webhookUrl;
 
-if (isWebhookMode) {
-  console.log(`Starting HTTP server on port ${config.port}...`);
+const webhookUrl = config.webhookUrl;
 
+// The webhook itself is registered once per deploy by scripts/set_webhook.ts (pre-deploy command)
+
+// Served by `deno task start` (deno serve _fresh/server.js) or `deno task dev` (Vite)
+export const app = new App<State>()
+  .use(staticFiles())
+  .use((ctx) => {
+    ctx.state.api = bot.api;
+    return ctx.next();
+  })
+  // GET / -> Root endpoint
+  .get("/", () =>
+    new Response("hi!", {
+      status: 200,
+      headers: { "Content-Type": "text/plain" },
+    }))
+  // GET /health -> Health check & queue status
+  .get("/health", () =>
+    Response.json({
+      status: "healthy",
+      mode: isWebhookMode ? "webhook" : "polling",
+      webhookUrl: webhookUrl.replace(config.botToken, "<BOT_TOKEN>"),
+    }));
+
+if (isWebhookMode) {
   const handleUpdate = webhookCallback(bot, "std/http", {
     secretToken: config.webhookSecret || undefined,
     // Audio updates publish inline (see src/queue/queue.ts); never let grammY cut them short.
@@ -21,54 +46,28 @@ if (isWebhookMode) {
     onTimeout: "return",
   });
 
-  const webhookUrl = config.webhookUrl;
-
-  // The webhook itself is registered once per deploy by scripts/set_webhook.ts (pre-deploy command)
-
-  Deno.serve({ port: config.port }, async (req: Request) => {
-    const url = new URL(req.url);
-
-    // GET / -> Root endpoint
-    if (req.method === "GET" && url.pathname === "/") {
-      return new Response("hi!", {
-        status: 200,
-        headers: { "Content-Type": "text/plain" },
-      });
+  // POST /webhook or POST /
+  const onUpdate = async ({ req }: { req: Request }) => {
+    try {
+      return await handleUpdate(req);
+    } catch (err) {
+      console.error("Error processing webhook update:", err);
+      return new Response("Internal Server Error", { status: 500 });
     }
+  };
+  app.post(config.webhookPath, onUpdate).post("/", onUpdate);
+}
 
-    // GET /health -> Health check & queue status
-    if (req.method === "GET" && url.pathname === "/health") {
-      return new Response(
-        JSON.stringify({
-          status: "healthy",
-          mode: "webhook",
-          webhookUrl: webhookUrl.replace(config.botToken, "<BOT_TOKEN>"),
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-    }
+// File-system routes: the /dashboard music library
+app.fsRoutes();
 
-    // POST /webhook or POST /
-    const isWebhookPath =
-      url.pathname === config.webhookPath ||
-      url.pathname === "/";
-
-    if (req.method === "POST" && isWebhookPath) {
-      try {
-        return await handleUpdate(req);
-      } catch (err) {
-        console.error("Error processing webhook update:", err);
-        return new Response("Internal Server Error", { status: 500 });
-      }
-    }
-
-    return new Response("Not Found", { status: 404 });
-  });
-} else {
+if (!isWebhookMode) {
   console.log("Starting bot in Long Polling mode (Local Development)...");
+
+  // Vite dev re-evaluates this module on edits; stop the previous poller so only one calls getUpdates
+  const globals = globalThis as { pollingBot?: Bot };
+  await globals.pollingBot?.stop();
+  globals.pollingBot = bot;
 
   // Remove any leftover webhooks so long polling can receive updates
   try {

@@ -1,4 +1,4 @@
-import type { Channel, UserSettings } from "./types.ts";
+import type { Channel, Track, UserSettings } from "./types.ts";
 
 let kvInstance: Deno.Kv | null = null;
 
@@ -100,4 +100,29 @@ export async function getActiveChannelForUser(userId: number): Promise<Channel |
   const settings = await getUserSettings(userId);
   if (!settings || !settings.activeChannelId) return null;
   return await getChannel(settings.activeChannelId);
+}
+
+export async function saveTrack(track: Track): Promise<void> {
+  const kv = await getKv();
+  await kv.set(["tracks", track.userId, track.id], track);
+}
+
+export async function getTrack(userId: number, trackId: string): Promise<Track | null> {
+  const kv = await getKv();
+  const res = await kv.get<Track>(["tracks", userId, trackId]);
+  return res.value;
+}
+
+export async function getUserTracks(userId: number): Promise<Track[]> {
+  const kv = await getKv();
+  const tracks: Track[] = [];
+  for await (const entry of kv.list<Track>({ prefix: ["tracks", userId] })) {
+    tracks.push(entry.value);
+  }
+  return tracks;
+}
+
+export async function deleteTrack(userId: number, trackId: string): Promise<void> {
+  const kv = await getKv();
+  await kv.delete(["tracks", userId, trackId]);
 }

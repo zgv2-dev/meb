@@ -11,6 +11,7 @@ import {
 } from "../db/kv.ts";
 import { buildChannelsMenu } from "./menus.ts";
 import { escapeMarkdownV2 } from "../utils/markdown.ts";
+import { createLoginUrl } from "../dashboard/auth.ts";
 
 export function registerCommandHandlers(bot: Bot) {
   // /start
@@ -26,6 +27,7 @@ export function registerCommandHandlers(bot: Bot) {
       `• /active \\- Check or switch your active channel\n` +
       `• /setdesc \\<text\\> \\- Set description for active channel\n` +
       `• /queue \\- Check audio publishing queue status\n` +
+      `• /dashboard \\- Open your music library dashboard\n` +
       `• /help \\- Detailed instructions`;
 
     await ctx.reply(text, { parse_mode: "MarkdownV2" });
@@ -209,6 +211,16 @@ export function registerCommandHandlers(bot: Bot) {
       `• *Pending Updates:* \`${info.pending_update_count}\`\n`;
 
     await ctx.reply(text, { parse_mode: "MarkdownV2" });
+  });
+
+  // /dashboard
+  bot.command("dashboard", async (ctx) => {
+    if (!ctx.from) return;
+    // Plain text, not a button: Telegram rejects localhost URLs in inline keyboards
+    await ctx.reply(
+      `🎵 Your music library (link valid for 10 minutes):\n${await createLoginUrl(ctx.from.id)}`,
+      { link_preview_options: { is_disabled: true } },
+    );
   });
 
   // /cancel

@@ -21,6 +21,8 @@ export interface AudioQueueItem {
   userId: number;
   channelId: number;
   fileId: string;
+  fileUniqueId?: string;
+  thumbFileId?: string;
   fileName?: string;
   duration?: number;
   performer?: string;
@@ -30,4 +32,24 @@ export interface AudioQueueItem {
   sourceChatId?: number;
   sourceMessageId?: number;
   queuedAt: number;
+}
+
+export interface Track {
+  id: string;
+  userId: number;
+  channelId: number;
+  channelTitle: string;
+  postId: number;
+  postUrl: string;
+  fileUniqueId?: string;
+  title: string;
+  artist: string;
+  album: string;
+  year: number | null;
+  // Artwork from the metadata lookup; thumbFileId (Telegram's embedded cover) is the fallback
+  coverUrl: string | null;
+  thumbFileId?: string;
+  duration?: number;
+  isVoice?: boolean;
+  createdAt: number;
 }

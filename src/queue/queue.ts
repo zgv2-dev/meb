@@ -2,6 +2,7 @@ import type { Api } from "grammy";
 import { GrammyError } from "grammy";
 import type { AudioQueueItem } from "../db/types.ts";
 import { publishAudioToChannel } from "../services/publisher.ts";
+import { recordTrack } from "../services/tracks.ts";
 import { config } from "../config.ts";
 
 /**
@@ -38,8 +39,14 @@ export async function publishAudioItem(api: Api, item: AudioQueueItem): Promise<
         }
       }
 
-      // Inter-message pacing: Telegram sends the next update only after this one returns
-      await delay(config.postPacingMs);
+      // Inter-message pacing: Telegram sends the next update only after this one returns.
+      // The dashboard entry is recorded meanwhile; its failure must not fail (and re-post) the track.
+      await Promise.all([
+        recordTrack(item, result.actualPostId).catch((err) =>
+          console.error(`[Queue] Could not record track ${item.id} for the dashboard:`, err)
+        ),
+        delay(config.postPacingMs),
+      ]);
       return true;
     } catch (err: unknown) {
       let retryAfterSec: number;

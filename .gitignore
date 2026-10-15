@@ -11,3 +11,7 @@
 # OS files
 .DS_Store
 Thumbs.db
+
+# Fresh build output and npm deps
+_fresh/
+node_modules/

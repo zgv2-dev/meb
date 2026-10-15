@@ -51,8 +51,11 @@ BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
 
 ### 3. Run Locally (Long Polling)
 ```sh
+deno install
 deno task dev
 ```
+
+The app is built with [Fresh](https://usefresh.dev/) (Vite). `deno task dev` serves the dashboard on `PORT` (default 8000) and starts long polling. To run the production build locally: `deno task build && deno task start`.
 
 ---
 
@@ -63,7 +66,7 @@ deno task dev
    - `BOT_TOKEN`: `your_telegram_bot_token`
    - `PUBLIC_DOMAIN`: `https://<your-project>.deno.dev` (or your custom domain)
    - `WEBHOOK_SECRET` (optional): a secure random string
-3. In the app settings, set the **Pre-deploy command** to `deno task set-webhook`. It registers the Telegram webhook at `https://<your-project>.deno.dev/webhook` once per production deploy (other timelines are skipped). Root `GET /` returns `"hi!"`.
+3. Build settings come from the `deploy` key in `deno.json` (it overrides the dashboard): Fresh preset, `deno task build`, served from `_fresh/server.js`. The pre-deploy command `deno task set-webhook` registers the Telegram webhook at `https://<your-project>.deno.dev/webhook` once per production deploy (other timelines are skipped). Root `GET /` returns `"hi!"`.
 4. Running the bot locally in long polling mode deletes the webhook. Afterwards, restore it with `deno run --env -A scripts/set_webhook.ts` (with `PUBLIC_DOMAIN` set) or redeploy.
 
 ---
@@ -80,7 +83,18 @@ deno task dev
 | `/setpostid <id> <num>` | Manually set/sync last post ID counter |
 | `/addchannel <@user or id>` | Manually add a channel |
 | `/queue` | View status of the audio processing queue |
+| `/dashboard` | Get a login link to your music library dashboard |
 | `/cancel` | Cancel awaiting input state |
+
+---
+
+## 🎵 Dashboard
+
+Every published track is saved to your library: title, artist, album, release year, cover art and a link to the channel post. Album, year and cover come from the public Deezer API (Telegram audio has only title and performer); the track's embedded Telegram thumbnail is the fallback cover. Tracks published before the dashboard existed are not in the library.
+
+- Send `/dashboard` to the bot for a login link (valid 10 minutes; the session lasts 30 days). Locally it is `http://localhost:8000/dashboard/...`.
+- **Songs / Artists / Albums**: browse and search; edit a track's title, artist, album or year (dashboard only, the channel post is unchanged).
+- **Duplicates**: tracks posted more than once to the same channel (same artist + title, or the same file). Nothing is deleted automatically. Per track, choose **Delete channel post** (deletes the post and the entry) or **Remove from library only** (for posts you already deleted in Telegram).
 
 ---
 
