@@ -112,4 +112,8 @@ Deno.test("Library island renders songs and flags duplicates", async () => {
   const html = await (await handle(new Request("http://localhost/"))).text();
   assert(html.includes("Band · LP · Ch"));
   assert(html.includes('class="badge">1<'));
+  // Sort/filter toolbar, defaulting to newest forwarded first
+  assert(html.includes('<select value="forwarded" >'));
+  assert(html.includes(">Newest first<"));
+  assert(html.includes(">Custom range</option>"));
 });

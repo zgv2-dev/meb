@@ -2,16 +2,40 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { Track } from "../src/db/types.ts";
 import { findDuplicateGroups } from "../src/utils/duplicates.ts";
+import {
+  albumOf,
+  artistOf,
+  type DateRange,
+  defaultDescending,
+  type Filters,
+  filterTracks,
+  NO_FILTERS,
+  type SortKey,
+  sortTracks,
+} from "../src/utils/library.ts";
 
 type Tab = "songs" | "artists" | "albums" | "duplicates";
-interface Filter {
-  artist: string;
-  album?: string;
-}
 
-const TABS: [Tab, string][] = [["songs", "Songs"], ["artists", "Artists"], ["albums", "Albums"], ["duplicates", "Duplicates"]];
-const artistOf = (t: Track) => t.artist || "Unknown artist";
-const albumOf = (t: Track) => t.album || "Unknown album";
+const TABS: [Tab, string][] = [["songs", "Songs"], ["artists", "Artists"], ["albums", "Albums"], [
+  "duplicates",
+  "Duplicates",
+]];
+const SORTS: [SortKey, string][] = [
+  ["forwarded", "Date forwarded"],
+  ["title", "Title"],
+  ["artist", "Artist"],
+  ["album", "Album"],
+  ["year", "Year released"],
+];
+const DATE_RANGES: [DateRange, string][] = [
+  ["", "Any time"],
+  ["today", "Today"],
+  ["yesterday", "Yesterday"],
+  ["week", "Last week"],
+  ["month", "Last month"],
+  ["custom", "Custom range"],
+];
+const unique = <T,>(values: T[]) => [...new Set(values)];
 const titleOf = (t: Track) => t.title || (t.isVoice ? "Voice message" : "Untitled");
 const fmtTime = (s?: number) => s ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : "";
 const hasCover = (t: Track) => !!(t.coverUrl || t.thumbFileId);
@@ -39,7 +63,9 @@ export default function Library(props: { tracks: Track[] }) {
   const [tracks, setTracks] = useState(() => [...props.tracks].sort((a, b) => b.createdAt - a.createdAt));
   const [tab, setTab] = useState<Tab>("songs");
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<Filter | null>(null);
+  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
+  const [sort, setSort] = useState<SortKey>("forwarded");
+  const [descending, setDescending] = useState(true);
   const [editing, setEditing] = useState<Track | null>(null);
   const [deleting, setDeleting] = useState<Track | null>(null);
   const [toast, setToast] = useState("");
@@ -52,14 +78,21 @@ export default function Library(props: { tracks: Track[] }) {
 
   const duplicates = findDuplicateGroups(tracks).map((g) => [...g].sort((a, b) => a.createdAt - b.createdAt));
   const q = query.trim().toLowerCase();
-  const visible = tracks.filter((t) =>
-    (!q || [t.title, t.artist, t.album].some((v) => v.toLowerCase().includes(q))) &&
-    (!filter || (artistOf(t) === filter.artist && (filter.album === undefined || albumOf(t) === filter.album)))
+  const visible = filterTracks(tracks, filters).filter((t) =>
+    !q || [t.title, t.artist, t.album].some((v) => v.toLowerCase().includes(q))
   );
+  const setFilter = (change: Partial<Filters>) => setFilters((f) => ({ ...f, ...change }));
+  const filtersActive = JSON.stringify(filters) !== JSON.stringify(NO_FILTERS);
 
-  const openTab = (next: Tab, nextFilter: Filter | null = null) => {
-    setTab(next);
-    setFilter(nextFilter);
+  // Filter options: albums narrow to the chosen artist
+  const artists = unique(tracks.map(artistOf)).sort((a, b) => a.localeCompare(b));
+  const albums = unique(tracks.filter((t) => !filters.artist || artistOf(t) === filters.artist).map(albumOf))
+    .sort((a, b) => a.localeCompare(b));
+  const years = unique(tracks.flatMap((t) => t.year ? [t.year] : [])).sort((a, b) => b - a);
+
+  const showSongs = (change: Partial<Filters>) => {
+    setTab("songs");
+    setFilters({ ...filters, album: "", ...change });
   };
 
   async function save(e: Event) {
@@ -107,13 +140,11 @@ export default function Library(props: { tracks: Track[] }) {
     if (tab === "songs") {
       return (
         <>
-          {filter && (
-            <div class="chip">
-              {filter.album !== undefined ? `${filter.album} — ${filter.artist}` : filter.artist}
-              <button type="button" onClick={() => setFilter(null)} aria-label="Clear filter">✕</button>
-            </div>
+          {visible.length ? sortTracks(visible, sort, descending).map((t) => songRow(t)) : (
+            <p class="empty">
+              {tracks.length ? "No songs match these filters." : "No songs yet. Forward audio to the bot."}
+            </p>
           )}
-          {visible.length ? visible.map((t) => songRow(t)) : <p class="empty">No songs yet. Forward audio to the bot.</p>}
         </>
       );
     }
@@ -123,7 +154,12 @@ export default function Library(props: { tracks: Track[] }) {
       return (
         <div class="grid">
           {artists.map(([name, ts]) => (
-            <button type="button" class="card round" key={name} onClick={() => openTab("songs", { artist: name })}>
+            <button
+              type="button"
+              class="card round"
+              key={name}
+              onClick={() => showSongs({ artist: name })}
+            >
               <Cover track={ts.find(hasCover)} label={name} />
               <div>{name}</div>
               <div class="sub">{ts.length} songs · {new Set(ts.map(albumOf)).size} albums</div>
@@ -145,7 +181,7 @@ export default function Library(props: { tracks: Track[] }) {
                 type="button"
                 class="card"
                 key={key}
-                onClick={() => openTab("songs", { artist: artistOf(t), album: albumOf(t) })}
+                onClick={() => showSongs({ artist: artistOf(t), album: albumOf(t) })}
               >
                 <Cover track={t} label={albumOf(t)} />
                 <div>{albumOf(t)}</div>
@@ -178,7 +214,12 @@ export default function Library(props: { tracks: Track[] }) {
         <h1>Music Library</h1>
         <nav>
           {TABS.map(([id, label]) => (
-            <button type="button" key={id} aria-current={tab === id ? "page" : undefined} onClick={() => openTab(id)}>
+            <button
+              type="button"
+              key={id}
+              aria-current={tab === id ? "page" : undefined}
+              onClick={() => setTab(id)}
+            >
               {label}
               {id === "duplicates" && duplicates.length > 0 && <span class="badge">{duplicates.length}</span>}
             </button>
@@ -192,15 +233,118 @@ export default function Library(props: { tracks: Track[] }) {
           onInput={(e) => setQuery(e.currentTarget.value)}
         />
       </header>
-      <main>{view()}</main>
+      <main>
+        {tab !== "duplicates" && (
+          <div class="toolbar">
+            {tab === "songs" && (
+              <div class="sort">
+                <label>
+                  Sort
+                  <select
+                    value={sort}
+                    onChange={(e) => {
+                      const key = e.currentTarget.value as SortKey;
+                      setSort(key);
+                      setDescending(defaultDescending(key));
+                    }}
+                  >
+                    {SORTS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  class="btn"
+                  onClick={() => setDescending(!descending)}
+                  aria-label={descending ? "Descending, switch to ascending" : "Ascending, switch to descending"}
+                >
+                  {sort === "forwarded" || sort === "year"
+                    ? (descending ? "Newest first" : "Oldest first")
+                    : (descending ? "Z–A" : "A–Z")}
+                </button>
+              </div>
+            )}
+            <label>
+              Title
+              <input
+                type="search"
+                placeholder="Contains…"
+                value={filters.title}
+                onInput={(e) => setFilter({ title: e.currentTarget.value })}
+              />
+            </label>
+            <label>
+              Artist
+              <select value={filters.artist} onChange={(e) => setFilter({ artist: e.currentTarget.value, album: "" })}>
+                <option value="">All</option>
+                {artists.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </label>
+            <label>
+              Album
+              <select value={filters.album} onChange={(e) => setFilter({ album: e.currentTarget.value })}>
+                <option value="">All</option>
+                {albums.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </label>
+            <label>
+              Year
+              <select value={filters.year} onChange={(e) => setFilter({ year: e.currentTarget.value })}>
+                <option value="">All</option>
+                {years.map((y) => <option key={y} value={String(y)}>{y}</option>)}
+              </select>
+            </label>
+            <label>
+              Forwarded
+              <select value={filters.date} onChange={(e) => setFilter({ date: e.currentTarget.value as DateRange })}>
+                {DATE_RANGES.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+              </select>
+            </label>
+            {filters.date === "custom" && (
+              <>
+                <label>
+                  From
+                  <input
+                    type="date"
+                    value={filters.from}
+                    max={filters.to || undefined}
+                    onInput={(e) => setFilter({ from: e.currentTarget.value })}
+                  />
+                </label>
+                <label>
+                  To
+                  <input
+                    type="date"
+                    value={filters.to}
+                    min={filters.from || undefined}
+                    onInput={(e) => setFilter({ to: e.currentTarget.value })}
+                  />
+                </label>
+              </>
+            )}
+            {filtersActive && (
+              <button type="button" class="btn" onClick={() => setFilters(NO_FILTERS)}>Clear filters</button>
+            )}
+            <span class="sub">{visible.length} of {tracks.length} songs</span>
+          </div>
+        )}
+        {view()}
+      </main>
 
       {editing && (
         <Modal onClose={() => setEditing(null)}>
           <form onSubmit={save}>
-            <label>Title <input name="title" value={editing.title} /></label>
-            <label>Artist <input name="artist" value={editing.artist} /></label>
-            <label>Album <input name="album" value={editing.album} /></label>
-            <label>Year <input name="year" inputMode="numeric" value={editing.year ?? ""} /></label>
+            <label>
+              Title <input name="title" value={editing.title} />
+            </label>
+            <label>
+              Artist <input name="artist" value={editing.artist} />
+            </label>
+            <label>
+              Album <input name="album" value={editing.album} />
+            </label>
+            <label>
+              Year <input name="year" inputMode="numeric" value={editing.year ?? ""} />
+            </label>
             <menu>
               <button type="button" class="btn" onClick={() => setEditing(null)}>Cancel</button>
               <button type="submit" class="btn">Save</button>
@@ -211,7 +355,9 @@ export default function Library(props: { tracks: Track[] }) {
 
       {deleting && (
         <Modal onClose={() => setDeleting(null)}>
-          <p><strong>Delete track?</strong></p>
+          <p>
+            <strong>Delete track?</strong>
+          </p>
           <p>{titleOf(deleting)} — {artistOf(deleting)} ({deleting.channelTitle})</p>
           <menu>
             <button type="button" class="btn" onClick={() => setDeleting(null)}>Cancel</button>

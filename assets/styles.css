@@ -18,8 +18,13 @@ nav button[aria-current] { background: var(--panel); color: var(--text); box-sha
 .badge { background: var(--danger); color: #fff; border-radius: 9px; padding: 0 6px; font-size: 12px; margin-left: 4px; }
 input[type=search] { padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); font: inherit; min-width: 0; flex: 1 1 180px; max-width: 280px; }
 main { padding: 16px; max-width: 1100px; margin: 0 auto; }
-.chip { display: inline-flex; gap: 6px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 4px 10px; margin-bottom: 12px; }
-.chip button, .link { border: 0; background: none; color: var(--accent); cursor: pointer; font: inherit; padding: 0; text-align: left; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; margin-bottom: 16px; }
+.toolbar label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.toolbar .sort { display: flex; gap: 6px; align-items: flex-end; }
+.toolbar .sort .btn { padding: 5px 10px; font-size: 14px; }
+.toolbar select, .toolbar input { padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); font: inherit; font-size: 14px; max-width: 180px; }
+.toolbar .sub { color: var(--muted); font-size: 13px; padding-bottom: 6px; }
+.link { border: 0; background: none; color: var(--accent); cursor: pointer; font: inherit; padding: 0; text-align: left; }
 .row { display: grid; grid-template-columns: 44px 1fr auto; gap: 12px; align-items: center; padding: 8px; border-bottom: 1px solid var(--line); }
 .row .sub { color: var(--muted); font-size: 13px; }
 .row .actions { display: flex; gap: 8px; align-items: center; font-size: 13px; }
