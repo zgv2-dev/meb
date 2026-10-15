@@ -1,16 +1,9 @@
 import { webhookCallback } from "grammy";
 import { createBot } from "./src/bot.ts";
 import { config } from "./src/config.ts";
+import { redactBotTokenInLogs } from "./src/utils/logging.ts";
 
-// Never log the bot token: fetch errors embed it in the Telegram API URL
-for (const level of ["log", "info", "warn", "error", "debug"] as const) {
-  const write = console[level];
-  console[level] = (...args: unknown[]) =>
-    write(
-      args.map((a) => (typeof a === "string" ? a : Deno.inspect(a))).join(" ")
-        .replaceAll(config.botToken || "\0", "<BOT_TOKEN>"),
-    );
-}
+redactBotTokenInLogs();
 
 const bot = createBot();
 
@@ -30,21 +23,7 @@ if (isWebhookMode) {
 
   const webhookUrl = config.webhookUrl;
 
-  // Set webhook automatically on startup if public domain / webhook URL is available
-  if (webhookUrl) {
-    try {
-      console.log(`Setting Telegram webhook to: ${webhookUrl}`);
-      await bot.api.setWebhook(webhookUrl, {
-        secret_token: config.webhookSecret || undefined,
-        // One update at a time: Telegram holds the backlog while each audio publishes inline
-        max_connections: 1,
-        allowed_updates: ["message", "callback_query", "my_chat_member"],
-      });
-      console.log("Webhook set successfully");
-    } catch (err) {
-      console.error("Failed to set webhook on startup:", err);
-    }
-  }
+  // The webhook itself is registered once per deploy by scripts/set_webhook.ts (pre-deploy command)
 
   Deno.serve({ port: config.port }, async (req: Request) => {
     const url = new URL(req.url);

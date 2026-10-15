@@ -6,7 +6,8 @@
   "tasks": {
     "dev": "deno run --env --allow-net --allow-env --allow-read --allow-write --unstable-kv --watch main.ts",
     "start": "deno run --env --allow-net --allow-env --allow-read --allow-write --unstable-kv main.ts",
-    "check": "deno check main.ts",
+    "check": "deno check main.ts scripts/set_webhook.ts",
+    "set-webhook": "deno run --allow-net --allow-env scripts/set_webhook.ts",
     "test": "deno test --allow-env --allow-net --allow-read --allow-write --unstable-kv tests/"
   },
   "imports": {

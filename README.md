@@ -27,7 +27,7 @@ A Telegram bot built with **Deno 2** and **grammY** framework. It strips existin
 - **Deployment Ready**:
   - Runs with **Long Polling** for local development.
   - Runs with **Webhooks** natively on **Deno Deploy** with built-in **Deno KV** persistence.
-  - Automatic webhook registration on startup.
+  - Webhook registered once per deploy by a pre-deploy command.
 
 ---
 
@@ -63,7 +63,8 @@ deno task dev
    - `BOT_TOKEN`: `your_telegram_bot_token`
    - `PUBLIC_DOMAIN`: `https://<your-project>.deno.dev` (or your custom domain)
    - `WEBHOOK_SECRET` (optional): a secure random string
-3. On startup, the bot will host the server, automatically configure the Telegram webhook to `https://<your-project>.deno.dev/webhook`, and begin handling updates immediately. Root `GET /` returns `"hi!"`.
+3. In the app settings, set the **Pre-deploy command** to `deno task set-webhook`. It registers the Telegram webhook at `https://<your-project>.deno.dev/webhook` once per production deploy (other timelines are skipped). Root `GET /` returns `"hi!"`.
+4. Running the bot locally in long polling mode deletes the webhook. Afterwards, restore it with `deno run --env -A scripts/set_webhook.ts` (with `PUBLIC_DOMAIN` set) or redeploy.
 
 ---
 
